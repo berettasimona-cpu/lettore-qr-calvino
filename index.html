@@ -9,7 +9,7 @@
     body {
       font-family: Arial, sans-serif;
       text-align: center;
-      padding: 20px;
+      padding: 15px;
     }
     button {
       padding: 16px;
@@ -22,71 +22,122 @@
       margin: 20px auto;
     }
     #messaggio {
-      font-size: 18px;
-      margin: 20px;
+      font-size: 19px;
+      font-weight: bold;
+      padding: 15px;
+      margin: 15px;
+      border-radius: 8px;
+    }
+    .verde {
+      background: #d9f2df;
+      color: #176b2c;
+    }
+    .rosso {
+      background: #f8d7da;
+      color: #a00000;
     }
   </style>
 </head>
 <body>
+
   <h2>Registro ingressi</h2>
   <p>Scuola dell'infanzia Italo Calvino</p>
-  <button onclick="avviaFotocamera()">AVVIA FOTOCAMERA</button>
+
+  <button id="avvia" onclick="avviaFotocamera()">AVVIA FOTOCAMERA</button>
+
   <div id="reader"></div>
   <div id="messaggio">Premi il pulsante per iniziare.</div>
 
   <script>
     let scanner;
-    let inviato = false;
+    let fotocamera;
+    let inLettura = false;
+    let inAttesa = false;
+
+    const messaggio = document.getElementById("messaggio");
+
+    function mostra(testo, colore) {
+      messaggio.textContent = testo;
+      messaggio.className = colore || "";
+    }
 
     async function avviaFotocamera() {
-      const messaggio = document.getElementById("messaggio");
-
       if (!window.opener) {
-        messaggio.textContent =
-          "Apri il lettore dalla pagina Registro ingressi.";
+        mostra("Apri il lettore dalla pagina Registro ingressi.", "rosso");
         return;
       }
 
       try {
-        const fotocamere = await Html5Qrcode.getCameras();
+        if (!fotocamera) {
+          const camere = await Html5Qrcode.getCameras();
 
-        if (!fotocamere || fotocamere.length === 0) {
-          throw new Error("Nessuna fotocamera trovata.");
+          if (!camere || camere.length === 0) {
+            throw new Error("Nessuna fotocamera trovata.");
+          }
+
+          const posteriore = camere.find(c =>
+            /back|rear|environment|posteriore/i.test(c.label)
+          );
+
+          fotocamera = posteriore ? posteriore.id : camere[0].id;
+          scanner = new Html5Qrcode("reader");
         }
 
-        const posteriore = fotocamere.find(c =>
-          /back|rear|environment|posteriore/i.test(c.label)
-        );
-
-        scanner = new Html5Qrcode("reader");
-        inviato = false;
+        inLettura = true;
+        inAttesa = false;
 
         await scanner.start(
-          posteriore ? posteriore.id : fotocamere[0].id,
+          fotocamera,
           { fps: 10, qrbox: { width: 230, height: 230 } },
           async (codice) => {
-            if (inviato) return;
-            inviato = true;
-            await scanner.stop();
+            if (inAttesa || !inLettura) return;
 
-            messaggio.textContent = "QR letto. Invio al registro...";
+            inAttesa = true;
+            inLettura = false;
 
-            window.opener.postMessage({
-              type: "CALVINO_QR",
-              token: codice
-            }, "*");
+            mostra("QR letto! Verifico l'ingresso...", "");
 
-            messaggio.textContent =
-              "Codice inviato. Torna alla scheda Registro ingressi.";
+            try {
+              await scanner.stop();
+              window.opener.postMessage({
+                type: "CALVINO_QR",
+                token: codice
+              }, "*");
+            } catch (errore) {
+              mostra("Errore nell'invio del codice.", "rosso");
+            }
           }
         );
 
-        messaggio.textContent = "Inquadra il QR Code.";
+        mostra("Pronto! Inquadra il QR Code.", "");
       } catch (errore) {
-        messaggio.textContent =
-          "Non riesco ad avviare la fotocamera: " + errore.message;
+        inLettura = false;
+        mostra("Errore fotocamera: " + errore.message, "rosso");
       }
     }
+
+    window.addEventListener("message", async function(event) {
+      if (event.source !== window.opener) return;
+
+      const dati = event.data;
+
+      if (!dati || dati.type !== "CALVINO_RESULT") return;
+
+      if (dati.ok) {
+        mostra(dati.messaggio, "verde");
+      } else {
+        mostra(dati.messaggio, "rosso");
+      }
+
+      setTimeout(async function() {
+        try {
+          await avviaFotocamera();
+        } catch (errore) {
+          mostra("Tocca AVVIA FOTOCAMERA per riprendere.", "rosso");
+        }
+      }, 1800);
+    });
   </script>
+
 </body>
 </html>
