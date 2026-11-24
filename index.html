@@ -1,1 +1,92 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lettore QR - Italo Calvino</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    button {
+      padding: 16px;
+      font-size: 18px;
+      margin: 12px;
+    }
+    #reader {
+      width: 100%;
+      max-width: 400px;
+      margin: 20px auto;
+    }
+    #messaggio {
+      font-size: 18px;
+      margin: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Registro ingressi</h2>
+  <p>Scuola dell'infanzia Italo Calvino</p>
+  <button onclick="avviaFotocamera()">AVVIA FOTOCAMERA</button>
+  <div id="reader"></div>
+  <div id="messaggio">Premi il pulsante per iniziare.</div>
 
+  <script>
+    let scanner;
+    let inviato = false;
+
+    async function avviaFotocamera() {
+      const messaggio = document.getElementById("messaggio");
+
+      if (!window.opener) {
+        messaggio.textContent =
+          "Apri il lettore dalla pagina Registro ingressi.";
+        return;
+      }
+
+      try {
+        const fotocamere = await Html5Qrcode.getCameras();
+
+        if (!fotocamere || fotocamere.length === 0) {
+          throw new Error("Nessuna fotocamera trovata.");
+        }
+
+        const posteriore = fotocamere.find(c =>
+          /back|rear|environment|posteriore/i.test(c.label)
+        );
+
+        scanner = new Html5Qrcode("reader");
+        inviato = false;
+
+        await scanner.start(
+          posteriore ? posteriore.id : fotocamere[0].id,
+          { fps: 10, qrbox: { width: 230, height: 230 } },
+          async (codice) => {
+            if (inviato) return;
+            inviato = true;
+            await scanner.stop();
+
+            messaggio.textContent = "QR letto. Invio al registro...";
+
+            window.opener.postMessage({
+              type: "CALVINO_QR",
+              token: codice
+            }, "*");
+
+            messaggio.textContent =
+              "Codice inviato. Torna alla scheda Registro ingressi.";
+          }
+        );
+
+        messaggio.textContent = "Inquadra il QR Code.";
+      } catch (errore) {
+        messaggio.textContent =
+          "Non riesco ad avviare la fotocamera: " + errore.message;
+      }
+    }
+  </script>
+</body>
+</html>
